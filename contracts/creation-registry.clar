@@ -1,8 +1,55 @@
-;; Creation Registry Contract
-;; Simple registry for creative works
+;; Ownership Contract
+;; Tracks ownership of registered works
 
-(define-data-var last-id uint u0)
+(define-map owners
+  { work-id: uint }
+  { owner: principal }
+)
 
+(define-read-only (get-owner (work-id uint))
+  (map-get? owners { work-id: work-id })
+)
+
+(define-public (claim-ownership (work-id uint))
+  (begin
+    ;; Get the work directly without contract call
+    (let ((work-data (get-work-data work-id)))
+      (asserts! (is-some work-data) (err u404))
+      (asserts! (is-eq tx-sender (get creator (unwrap! work-data (err u404)))) (err u403))
+      (asserts! (is-none (map-get? owners { work-id: work-id })) (err u409))
+
+      (map-set owners
+        { work-id: work-id }
+        { owner: tx-sender }
+      )
+
+      (ok true)
+    )
+  )
+)
+
+(define-public (transfer-ownership (work-id uint) (new-owner principal))
+  (let
+    ((current-owner-data (map-get? owners { work-id: work-id })))
+
+    (asserts! (is-some current-owner-data) (err u404))
+    (asserts! (is-eq tx-sender (get owner (unwrap! current-owner-data (err u404)))) (err u403))
+
+    (map-set owners
+      { work-id: work-id }
+      { owner: new-owner }
+    )
+
+    (ok true)
+  )
+)
+
+;; Helper function to get work data without contract call
+(define-private (get-work-data (work-id uint))
+  (map-get? works { id: work-id })
+)
+
+;; Local copy of works map for reference
 (define-map works
   { id: uint }
   {
@@ -12,29 +59,17 @@
   }
 )
 
-(define-read-only (get-work (id uint))
-  (map-get? works { id: id })
-)
-
-(define-read-only (get-last-id)
-  (var-get last-id)
-)
-
-(define-public (register-work (title (string-ascii 64)) (hash (buff 32)))
-  (let
-    ((new-id (+ (var-get last-id) u1)))
-
-    (var-set last-id new-id)
-
+;; Function to register work data locally
+(define-public (register-work-data (id uint) (creator principal) (title (string-ascii 64)) (hash (buff 32)))
+  (begin
     (map-set works
-      { id: new-id }
+      { id: id }
       {
-        creator: tx-sender,
+        creator: creator,
         title: title,
         hash: hash
       }
     )
-
-    (ok new-id)
+    (ok true)
   )
 )
